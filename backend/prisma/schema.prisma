@@ -1,0 +1,412 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         UserRole @default(USER)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  clientsCreated     Client[]            @relation("ClientCreatedBy")
+  ordersCreated      Order[]             @relation("OrderCreatedBy")
+  maintenanceVisits  MaintenanceVisit[]  @relation("MaintenanceAssignedTo")
+  visitsCalls        VisitCall[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model Client {
+  id                   String   @id @default(cuid())
+  name                 String
+  phone                String   @unique
+  email                String?
+  businessId           String?  @unique @map("business_id")
+  taxNumber            String?  @map("tax_number")
+  branchInfo           Json?    @map("branch_info")
+  monthlyConsumption   Decimal? @map("monthly_consumption")
+  status               ClientStatus @default(ACTIVE)
+  createdBy            String   @map("created_by")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  creator              User               @relation("ClientCreatedBy", fields: [createdBy], references: [id])
+  orders               Order[]
+  maintenanceVisits    MaintenanceVisit[]
+  visitsCalls          VisitCall[]
+  feedback             Feedback[]
+  churnPredictions     ChurnPrediction[]
+  salesForecasts       SalesForecast[]
+  deliverySchedules    DeliverySchedule[]
+
+  @@map("clients")
+}
+
+model Product {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  price           Decimal
+  qualityRating   Int?     @map("quality_rating")
+  specifications  Json?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  creator         User        @relation(fields: [createdBy], references: [id])
+  orderItems      OrderItem[]
+  productMedia    ProductMedia[]
+
+  @@map("products")
+}
+
+model ProductMedia {
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  filePath  String   @map("file_path")
+  fileType  String   @map("file_type")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_media")
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  clientId    String      @map("client_id")
+  createdBy   String      @map("created_by")
+  orderDate   DateTime    @map("order_date")
+  status      OrderStatus @default(PENDING)
+  subtotal    Decimal
+  taxAmount   Decimal     @map("tax_amount")
+  totalAmount Decimal     @map("total_amount")
+  notes       String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  client            Client             @relation(fields: [clientId], references: [id])
+  creator           User               @relation("OrderCreatedBy", fields: [createdBy], references: [id])
+  orderItems        OrderItem[]
+  invoices          Invoice[]
+  deliverySchedules DeliverySchedule[]
+  returns           Return[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id         String  @id @default(cuid())
+  orderId    String  @map("order_id")
+  productId  String  @map("product_id")
+  quantity   Int
+  unitPrice  Decimal @map("unit_price")
+  totalPrice Decimal @map("total_price")
+  notes      String?
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model DeliverySchedule {
+  id            String         @id @default(cuid())
+  orderId       String         @map("order_id")
+  clientId      String         @map("client_id")
+  scheduledDate DateTime       @map("scheduled_date")
+  estimatedTime DateTime?      @map("estimated_time")
+  status        DeliveryStatus @default(SCHEDULED)
+  distanceKm    Decimal?       @map("distance_km")
+  routeNotes    String?        @map("route_notes")
+  assignedDriver String?       @map("assigned_driver")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  order  Order  @relation(fields: [orderId], references: [id])
+  client Client @relation(fields: [clientId], references: [id])
+  driver User?  @relation(fields: [assignedDriver], references: [id])
+
+  @@map("delivery_schedule")
+}
+
+model MaintenanceVisit {
+  id            String            @id @default(cuid())
+  clientId      String            @map("client_id")
+  assignedTo    String            @map("assigned_to")
+  scheduledDate DateTime          @map("scheduled_date")
+  scheduledTime DateTime?         @map("scheduled_time")
+  visitType     MaintenanceType   @map("visit_type")
+  status        MaintenanceStatus @default(SCHEDULED)
+  reason        String?
+  outcome       String?
+  cost          Decimal?
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  // Relations
+  client   Client @relation(fields: [clientId], references: [id])
+  assignee User   @relation("MaintenanceAssignedTo", fields: [assignedTo], references: [id])
+
+  @@map("maintenance_visits")
+}
+
+model VisitCall {
+  id              String        @id @default(cuid())
+  clientId        String        @map("client_id")
+  userId          String        @map("user_id")
+  type            VisitCallType
+  purpose         String?
+  outcome         String?
+  distanceKm      Decimal?      @map("distance_km")
+  durationMinutes Int?          @map("duration_minutes")
+  visitDate       DateTime      @map("visit_date")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  // Relations
+  client Client @relation(fields: [clientId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("visits_calls")
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  orderId      String        @map("order_id")
+  invoiceNumber String       @unique @map("invoice_number")
+  issueDate    DateTime      @map("issue_date")
+  dueDate      DateTime      @map("due_date")
+  amount       Decimal
+  status       InvoiceStatus @default(PENDING)
+  paymentTerms String?       @map("payment_terms")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  order    Order     @relation(fields: [orderId], references: [id])
+  payments Payment[]
+
+  @@map("invoices")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  invoiceId       String        @map("invoice_id")
+  amount          Decimal
+  paymentDate     DateTime      @map("payment_date")
+  paymentMethod   PaymentMethod @map("payment_method")
+  referenceNumber String?       @map("reference_number")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+model Return {
+  id           String       @id @default(cuid())
+  orderId      String       @map("order_id")
+  processedBy  String       @map("processed_by")
+  reason       String
+  status       ReturnStatus @default(PENDING)
+  refundAmount Decimal      @map("refund_amount")
+  returnDate   DateTime     @map("return_date")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  order     Order @relation(fields: [orderId], references: [id])
+  processor User  @relation(fields: [processedBy], references: [id])
+
+  @@map("returns")
+}
+
+model Feedback {
+  id              String         @id @default(cuid())
+  clientId        String         @map("client_id")
+  content         String
+  rating          Int
+  category        FeedbackCategory
+  sentiment       SentimentType?
+  sentimentScore  Decimal?       @map("sentiment_score")
+  isProcessed     Boolean        @default(false) @map("is_processed")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  // Relations
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@map("feedback")
+}
+
+model ChurnPrediction {
+  id             String    @id @default(cuid())
+  clientId       String    @map("client_id")
+  churnScore     Decimal   @map("churn_score")
+  riskLevel      RiskLevel @map("risk_level")
+  riskFactors    Json      @map("risk_factors")
+  predictionDate DateTime  @map("prediction_date")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@map("churn_predictions")
+}
+
+model SalesForecast {
+  id                 String   @id @default(cuid())
+  clientId           String?  @map("client_id")
+  forecastDate       DateTime @map("forecast_date")
+  predictedAmount    Decimal  @map("predicted_amount")
+  confidenceInterval Decimal  @map("confidence_interval")
+  modelMetadata      Json     @map("model_metadata")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  // Relations
+  client Client? @relation(fields: [clientId], references: [id])
+
+  @@map("sales_forecasts")
+}
+
+model AuditLog {
+  id         String     @id @default(cuid())
+  userId     String     @map("user_id")
+  entityType String     @map("entity_type")
+  entityId   String     @map("entity_id")
+  action     AuditAction
+  oldValues  Json?      @map("old_values")
+  newValues  Json?      @map("new_values")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  MANAGER
+  USER
+  DRIVER
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum DeliveryStatus {
+  SCHEDULED
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  CANCELLED
+}
+
+enum MaintenanceType {
+  ROUTINE
+  REPAIR
+  EMERGENCY
+  INSPECTION
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum VisitCallType {
+  VISIT
+  CALL
+  EMAIL
+  MEETING
+}
+
+enum InvoiceStatus {
+  PENDING
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  BANK_TRANSFER
+  CHECK
+  DIGITAL_WALLET
+}
+
+enum ReturnStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSED
+}
+
+enum FeedbackCategory {
+  PRODUCT
+  SERVICE
+  DELIVERY
+  SUPPORT
+  GENERAL
+}
+
+enum SentimentType {
+  POSITIVE
+  NEGATIVE
+  NEUTRAL
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  VIEW
+}
